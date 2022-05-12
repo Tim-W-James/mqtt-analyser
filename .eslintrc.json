@@ -2,7 +2,7 @@
   "parser": "@typescript-eslint/parser",
   "parserOptions": {
     "project": "./tsconfig.json",
-    "sourceType": "script",
+    "sourceType": "module",
     "ecmaVersion": "latest",
     "ecmaFeatures": {
       "impliedStrict": true,
