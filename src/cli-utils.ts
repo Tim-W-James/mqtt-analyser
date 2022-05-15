@@ -27,9 +27,29 @@ async function askPassword() {
   return password;
 }
 
+// TODO validate number
+async function askMeasurements() {
+  const { durationPerMeasurement } = await inquirer.prompt({
+    type: "input",
+    name: "durationPerMeasurement",
+    message:
+      "How long in ms do you want to send messages for each measurement?",
+    default() {
+      return "1000";
+    },
+  });
+  return durationPerMeasurement;
+}
+
 const args = minimist(process.argv.slice(2), {
-  string: ["host", "port", "username", "password"],
-  alias: { h: "host", p: "port", u: "username", P: "password" },
+  string: ["host", "port", "username", "password", "messagesPerMeasurement"],
+  alias: {
+    h: "host",
+    p: "port",
+    u: "username",
+    P: "password",
+    m: "messagesPerMeasurement",
+  },
 });
 
-export { askUsername, askPassword, args };
+export { askUsername, askPassword, askMeasurements, args };

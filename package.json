@@ -3,29 +3,19 @@
   "version": "0.0.0",
   "description": "Analyses the performance of an MQTT Broker :rocket:",
   "author": "Tim James",
-  "homepage": "https://github.com/Tim-W-James/mqtt-analyser#readme",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Tim-W-James/mqtt-analyser.git"
-  },
-  "keywords": [
-    "project_keywords"
-  ],
-  "bugs": {
-    "url": "https://github.com/Tim-W-James/mqtt-analyser/issues"
-  },
   "type": "module",
-  "exports": "./dist/index.js",
+  "exports": {
+    "./publisher": "./dist/publisher.js",
+    "./analyser": "./dist/analyser.ts"
+  },
   "scripts": {
-    "dev": "nodemon --watch './**/*.ts' --watch '.env' --exec 'node --experimental-specifier-resolution=node --loader ts-node/esm' src/index.ts",
+    "dev-publisher": "nodemon --watch './**/*.ts' --watch '.env' --exec 'node --experimental-specifier-resolution=node --loader ts-node/esm' src/publisher.ts",
+    "dev-analyser": "nodemon --watch './**/*.ts' --watch '.env' --exec 'node --experimental-specifier-resolution=node --loader ts-node/esm' src/analyser.ts",
     "build": "tsc --project tsconfig.build.json",
-    "start": "node --es-module-specifier-resolution=node dist/index.js",
+    "start-publisher": "node --es-module-specifier-resolution=node dist/publisher.js",
+    "start-analyser": "node --es-module-specifier-resolution=node dist/analyser.js",
     "lint": "eslint src",
-    "format": "eslint src --fix",
-    "test": "vitest",
-    "test:ui": "vitest --ui",
-    "test:run": "vitest run",
-    "coverage": "vitest run --coverage"
+    "format": "eslint src --fix"
   },
   "devDependencies": {
     "@types/inquirer": "^8.2.1",
