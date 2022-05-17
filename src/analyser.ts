@@ -12,6 +12,8 @@ import {
 } from "./mqtt-utils";
 import chalk from "chalk";
 import { createSpinner } from "nanospinner";
+import pkg from "lodash";
+const { mean } = pkg;
 
 const host = args["host"] || process.env["MQTT_HOST"] || "localhost";
 const port = args["port"] || process.env["MQTT_PORT"] || "1883";
@@ -25,10 +27,14 @@ const DURATION_PER_MEASUREMENT = (args["durationPerMeasurement"] ||
 
 let qos: mqtt.QoS = 0; // 0, 1 or 2
 let delay: publishDelay = 0; // ms
-let receivedMessages = 0;
-let measurementsTaken = 0;
 let startTime = 0;
-// let lastMeasurementTime = 0;
+let measurementsTaken = 0;
+let receivedMessages = 0;
+let receivedMessagesOutOfOrder = 0;
+let prevCount = -1;
+let maxCount = -1;
+let lastMeasurementTime: number | undefined = undefined;
+let delayBetweenMessages: number[] = [];
 let hasTimerStarted = false;
 let analyserStatusMessage = "";
 
@@ -40,18 +46,6 @@ const metrics = [
   "Median Inter-Message-Gap (ms)",
 ] as const;
 // TODO abstraction
-function generateTable(): Map<string, number> {
-  const rtn = new Map();
-  [0, 1, 2].forEach((q) => {
-    delayValues.forEach((d) => {
-      rtn.set(`${q}/${d}`, "0");
-    });
-  });
-  return rtn;
-}
-const receivedTable = generateTable();
-const prevCountTable = generateTable();
-// const prevTimeTable = generateTable();
 
 const resultsTable = new Map();
 let currentTableStr = "";
@@ -114,39 +108,47 @@ function resultsTableString(table: Map<string, number>, isFinal = false) {
 function calculateResults(
   qos: mqtt.QoS,
   delay: publishDelay,
-  receivedMessages: number | undefined = undefined,
+  receivedMessages: number,
+  receivedMessagesOutOfOrder: number,
+  maxCount: number,
+  delayBetweenMessages: number[],
 ) {
   // rate
-  if (receivedMessages != undefined)
-    resultsTable.set(`${metrics[0]}/${qos}/${delay}`, receivedMessages);
+  resultsTable.set(`${metrics[0]}/${qos}/${delay}`, receivedMessages);
   // loss
   resultsTable.set(
     `${metrics[1]}/${qos}/${delay}`,
-    (
-      ((prevCountTable.get(`${qos}/${delay}`) || 0) /
-        ((receivedTable.get(`${qos}/${delay}`) || 0) - 1)) *
-        100 -
-      100
-    ).toFixed(),
+    ((maxCount / (receivedMessages - 1)) * 100 - 100).toFixed(),
   );
-  // TODO out-of-order
+  // out-of-order
   resultsTable.set(
     `${metrics[2]}/${qos}/${delay}`,
-    receivedTable.get(`${qos}/${delay}`),
+    ((receivedMessagesOutOfOrder / receivedMessages) * 100).toFixed(),
   );
-  // TODO mean gap
+  // mean gap
   resultsTable.set(
     `${metrics[3]}/${qos}/${delay}`,
-    receivedTable.get(`${qos}/${delay}`),
+    mean(delayBetweenMessages).toFixed(),
   );
-  // TODO median gap
+  // median gap
+  function median(values: number[]): number {
+    if (delayBetweenMessages.length === 0) return 0;
+    values.sort(function (a, b) {
+      return a - b;
+    });
+    const middle = Math.floor(values.length / 2);
+
+    if (values.length % 2) return values[middle] || 0;
+    return ((values[middle - 1] || 0) + (values[middle] || 0)) / 2.0;
+  }
+
   resultsTable.set(
     `${metrics[4]}/${qos}/${delay}`,
-    receivedTable.get(`${qos}/${delay}`),
+    median(delayBetweenMessages).toFixed(),
   );
 }
 
-const spinnerAnalyser = createSpinner(
+const spinner = createSpinner(
   chalk.blue(
     `Waiting for messages on topic ${chalk.yellow(
       `counter/${qos}/${delay}`,
@@ -162,7 +164,7 @@ const client: mqtt.MqttClient = await mqttStartClient(
   "Analyser",
   () => {
     takeMeasurements();
-    spinnerAnalyser.start();
+    spinner.start();
   },
 );
 
@@ -173,19 +175,15 @@ client.publish("request/delay", delay.toString(), { retain: true });
 
 client.on("message", (topic, message) => {
   // TODO validate topic
-  if (topic.startsWith("counter/")) {
-    if (topic === `counter/${qos}/${delay}`) {
-      receivedMessages++;
-    }
-    prevCountTable.set(
-      `${topic.split("/")[1]}/${topic.split("/")[2]}`,
-      parseInt(message.toString()),
-    );
-    receivedTable.set(
-      `${topic.split("/")[1]}/${topic.split("/")[2]}`,
-      (prevCountTable.get(`${topic.split("/")[1]}/${topic.split("/")[2]}`) ||
-        0) + 1,
-    );
+  if (topic === `counter/${qos}/${delay}`) {
+    receivedMessages++;
+    if (parseInt(message.toString()) !== prevCount + 1)
+      receivedMessagesOutOfOrder++;
+    prevCount = parseInt(message.toString());
+    maxCount = Math.max(maxCount, prevCount);
+    if (lastMeasurementTime !== undefined)
+      delayBetweenMessages.push(new Date().getTime() - lastMeasurementTime);
+    lastMeasurementTime = new Date().getTime();
   }
 });
 
@@ -202,7 +200,14 @@ async function takeMeasurements() {
       ) {
         hasTimerStarted = false;
         measurementsTaken++;
-        calculateResults(qos, delay, receivedMessages);
+        calculateResults(
+          qos,
+          delay,
+          receivedMessages,
+          receivedMessagesOutOfOrder,
+          maxCount,
+          delayBetweenMessages,
+        );
         if (delay < 200) {
           delay = nextDelay(delay) || 200;
           client.publish("request/qos", qos.toString(), { retain: true });
@@ -215,6 +220,11 @@ async function takeMeasurements() {
         }
         currentTableStr = resultsTableString(resultsTable);
         receivedMessages = 0;
+        receivedMessagesOutOfOrder = 0;
+        prevCount = -1;
+        maxCount = -1;
+        lastMeasurementTime = undefined;
+        delayBetweenMessages = [];
       }
       // update spinner
       let currentTime = new Date().getTime();
@@ -226,7 +236,7 @@ async function takeMeasurements() {
         )}`;
         currentTime = startTime;
       }
-      spinnerAnalyser.update({
+      spinner.update({
         text: chalk.blue(
           `Analysing QoS ${chalk.yellow(qos)} with a delay of ${chalk.yellow(
             delay,
@@ -243,9 +253,8 @@ async function takeMeasurements() {
     } else {
       clearInterval(interval);
       setTimeout(() => {
-        calculateResults(qos, delay); // TODO update all
         currentTableStr = resultsTableString(resultsTable, true);
-        spinnerAnalyser.success({
+        spinner.success({
           text: `${chalk.green("Finished analysing\n\n")}${chalk.blue(
             currentTableStr,
           )}`,
