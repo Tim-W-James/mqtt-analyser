@@ -1,17 +1,12 @@
 #!/usr/bin/env node
 /* eslint-disable sonarjs/no-duplicate-string */
 
-import * as mqtt from "mqtt";
-import { args, askUsername, askPassword, askMeasurements } from "./cli-utils";
-import {
-  mqttStartClient,
-  subscripeToTopic,
-  publishDelay,
-  isValidDelay,
-  sleep,
-} from "./mqtt-utils";
 import chalk from "chalk";
+import * as mqtt from "mqtt";
 import { createSpinner } from "nanospinner";
+import { args, askMeasurements, askPassword, askUsername } from "./cliUtils";
+import { isValidDelay, publishDelay, sleep } from "./delay";
+import { mqttStartClient, subscripeToTopic } from "./mqttUtils";
 
 const host = args["host"] || process.env["MQTT_HOST"] || "localhost";
 const port = args["port"] || process.env["MQTT_PORT"] || "1883";
@@ -22,6 +17,7 @@ const password =
 const DURATION_PER_MEASUREMENT = (args["durationPerMeasurement"] ||
   process.env["DURATION_PER_MEASUREMENT"] ||
   (await askMeasurements())) as number;
+const displayLiveResults = args["live"] || false;
 
 let qos: mqtt.QoS | undefined = undefined; // 0, 1 or 2
 let delay: publishDelay | undefined = undefined; // ms
@@ -36,7 +32,7 @@ const client: mqtt.MqttClient = await mqttStartClient(
     subscripeToTopic(client, "request/qos");
     subscripeToTopic(client, "request/delay");
     console.log(
-      chalk.blue(
+      chalk.visible(
         `The publisher will send messages for ${chalk.yellow(
           `${DURATION_PER_MEASUREMENT}ms`,
         )} to ${chalk.yellow("counter/<qos>/<delay>")}`,
@@ -45,15 +41,27 @@ const client: mqtt.MqttClient = await mqttStartClient(
   },
 );
 
+// TODO remove spinner
 async function publishMessages(qos: mqtt.QoS, delay: publishDelay) {
   const spinner = createSpinner(
     // eslint-disable-next-line sonarjs/no-nested-template-literals
-    chalk.blue(
+    chalk.visible(
       `Waiting for a QoS to be set on topic ${chalk.yellow(
         "request/qos",
       )} and a Delay on ${chalk.yellow("request/delay")} `,
     ),
-  ).start();
+  );
+  if (displayLiveResults) {
+    spinner.start();
+  } else {
+    console.log(
+      chalk.visible(
+        `Waiting for a QoS to be set on topic ${chalk.yellow(
+          "request/qos",
+        )} and a Delay on ${chalk.yellow("request/delay")} `,
+      ),
+    );
+  }
   let counter = 0;
   await sleep(0);
   // let messagesToSend = DURATION_PER_MEASUREMENT / delay;
@@ -61,29 +69,49 @@ async function publishMessages(qos: mqtt.QoS, delay: publishDelay) {
   const interval = setInterval(function () {
     if (new Date().getTime() - startTime > DURATION_PER_MEASUREMENT) {
       clearInterval(interval);
-      spinner.success({
-        text: chalk.green(
-          `Finished sending messages to topic ${chalk.yellow(
-            `counter/${qos}/${delay}`,
-          )} - Messages sent: ${chalk.yellow(counter)}`,
-        ),
-      });
+      if (displayLiveResults) {
+        spinner.success({
+          text: chalk.green(
+            `Finished sending messages to topic ${chalk.yellow(
+              `counter/${qos}/${delay}`,
+            )} - Messages sent: ${chalk.yellow(counter)}`,
+          ),
+        });
+      } else {
+        console.log(
+          chalk.green(
+            `Finished sending messages to topic ${chalk.yellow(
+              `counter/${qos}/${delay}`,
+            )} - Messages sent: ${chalk.yellow(counter)}`,
+          ),
+        );
+      }
       return;
     }
     client.publish(`counter/${qos}/${delay}`, `${counter}`, { qos: qos });
     counter++;
-    spinner.update({
-      text: chalk.blue(
-        `Sending messages to topic ${chalk.yellow(
-          `counter/${qos}/${delay}`,
-        )} - Progress: ${chalk.yellow(
-          `${(
-            ((new Date().getTime() - startTime) / DURATION_PER_MEASUREMENT) *
-            100
-          ).toFixed()}%`,
-        )} - Messages sent: ${chalk.yellow(counter)}`,
-      ),
-    });
+    if (displayLiveResults) {
+      spinner.update({
+        text: chalk.visible(
+          `Sending messages to topic ${chalk.yellow(
+            `counter/${qos}/${delay}`,
+          )} - Progress: ${chalk.yellow(
+            `${(
+              ((new Date().getTime() - startTime) / DURATION_PER_MEASUREMENT) *
+              100
+            ).toFixed()}%`,
+          )} - Messages sent: ${chalk.yellow(counter)}`,
+        ),
+      });
+    } else if (counter === 1) {
+      console.log(
+        chalk.visible(
+          `Sending messages to topic ${chalk.yellow(
+            `counter/${qos}/${delay}`,
+          )}`,
+        ),
+      );
+    }
   }, delay);
 }
 // TODO calc messages to send by delay + duration

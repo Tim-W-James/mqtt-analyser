@@ -43,6 +43,7 @@ async function askMeasurements() {
 
 const args = minimist(process.argv.slice(2), {
   string: ["host", "port", "username", "password", "messagesPerMeasurement"],
+  boolean: ["live"],
   alias: {
     h: "host",
     p: "port",
