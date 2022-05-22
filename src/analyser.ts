@@ -3,7 +3,7 @@ import chalk from "chalk";
 import * as mqtt from "mqtt";
 import { args, askMeasurements, askPassword, askUsername } from "./cliUtils";
 import { nextDelay, publishDelay } from "./delay";
-import { mqttStartClient, subscripeToTopic } from "./mqttUtils";
+import { mqttStartClient, subscribeToTopic } from "./mqttUtils";
 import {
   calculateResults,
   createResultsTable,
@@ -52,7 +52,7 @@ const client: mqtt.MqttClient = await mqttStartClient(
 
 // the analyser subscribes to count/<qos>/<delay> and publishes to request/qos
 // and request/delay
-subscripeToTopic(client, "counter/#");
+subscribeToTopic(client, "counter/#", qos);
 client.publish("request/qos", qos.toString(), { retain: true });
 client.publish("request/delay", delay.toString(), { retain: true });
 
@@ -109,6 +109,9 @@ async function takeMeasurements() {
           qos++;
           delay = 0;
         }
+        // change QoS level of subscription
+        client.unsubscribe("counter/#");
+        subscribeToTopic(client, "counter/#", qos);
         // publish the new qos/delay value
         client.publish("request/qos", qos.toString(), { retain: true });
         client.publish("request/delay", delay.toString(), { retain: true });

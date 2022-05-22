@@ -82,8 +82,12 @@ async function mqttStartClient(
  * @param  {mqtt.MqttClient} client
  * @param  {string} topic
  */
-function subscripeToTopic(client: mqtt.MqttClient, topic: string) {
-  client.subscribe(topic, function (err) {
+function subscribeToTopic(
+  client: mqtt.MqttClient,
+  topic: string,
+  qos?: mqtt.QoS,
+) {
+  client.subscribe(topic, { qos: qos || 0 }, function (err) {
     if (err) {
       console.error(`Failed to subscribe to ${topic}: ${err}`);
       process.exit(1);
@@ -91,4 +95,4 @@ function subscripeToTopic(client: mqtt.MqttClient, topic: string) {
   });
 }
 
-export { mqttStartClient, subscripeToTopic };
+export { mqttStartClient, subscribeToTopic };

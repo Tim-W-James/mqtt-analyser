@@ -130,7 +130,9 @@ Collects various metrics to test the performance of an MQTT broker. This is achi
 * `./src`: source code
 * `./dist`: compiled `node.js` executables
 
-<!-- ### Limitations -->
+### Limitations
+
+* Due to limitations with Node, the messages/second for a delay of 0ms may be closer to that of 1ms on some systems. Node environments may restrict the minimum value for the interval between these asynchronous events due to it being single threaded. This is a workaround to avoid 100% CPU usage, but means that we don't get a true delay of 0ms. Further reading: <https://nodejs.org/en/docs/guides/timers-in-node/>
 
 <!-- GETTING STARTED -->
 ## Getting Started

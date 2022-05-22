@@ -4,7 +4,7 @@ import chalk from "chalk";
 import * as mqtt from "mqtt";
 import { args, askMeasurements, askPassword, askUsername } from "./cliUtils";
 import { isValidDelay, publishDelay, sleep } from "./delay";
-import { mqttStartClient, subscripeToTopic } from "./mqttUtils";
+import { mqttStartClient, subscribeToTopic } from "./mqttUtils";
 
 // initialize parameters from command line arguments or env vars
 // defaults to localhost:1883 with no username or password
@@ -30,13 +30,20 @@ const client: mqtt.MqttClient = await mqttStartClient(
   PASSWORD,
   "Publisher",
   () => {
-    subscripeToTopic(client, "request/qos");
-    subscripeToTopic(client, "request/delay");
+    subscribeToTopic(client, "request/qos");
+    subscribeToTopic(client, "request/delay");
     console.log(
       chalk.visible(
         `The publisher will send messages for ${chalk.yellow(
           `${DURATION_PER_MEASUREMENT}ms`,
         )} to ${chalk.yellow("counter/<qos>/<delay>")}`,
+      ),
+    );
+    console.log(
+      chalk.visible(
+        `Waiting for a QoS to be set on topic ${chalk.yellow(
+          "request/qos",
+        )} and a Delay on ${chalk.yellow("request/delay")} `,
       ),
     );
   },
