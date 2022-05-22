@@ -42,13 +42,13 @@ async function askMeasurements() {
 }
 
 const args = minimist(process.argv.slice(2), {
-  string: ["host", "port", "username", "password", "messagesPerMeasurement"],
+  string: ["host", "port", "username", "password", "durationPerMeasurement"],
   alias: {
     h: "host",
     p: "port",
     u: "username",
     P: "password",
-    m: "messagesPerMeasurement",
+    m: "durationPerMeasurement",
   },
 });
 
