@@ -1,9 +1,10 @@
 import chalk from "chalk";
-import { delayValues, publishDelay } from "./delay";
-import * as mqtt from "mqtt";
 import pkg from "lodash";
+import * as mqtt from "mqtt";
+import { delayValues, publishDelay } from "./delay";
 const { mean } = pkg;
 
+// specify metrics to track on the table
 const metrics = [
   "Average Rate (messages/second)",
   "Message Loss (%)",
@@ -12,6 +13,12 @@ const metrics = [
   "Median Inter-Message-Gap (ms)",
 ] as const;
 
+interface resultsTable {
+  table: Map<string, string>;
+  currentTableStr: string;
+}
+
+// populate table with initial values
 function createResultsTable() {
   const table = new Map();
   metrics.forEach((m) => {
@@ -27,21 +34,29 @@ function createResultsTable() {
   };
 }
 
+/**
+ * Output the results table as a string
+ *
+ * @param  {Map<string, string>} table
+ * @param  {mqtt.QoS} qos?
+ * @param  {publishDelay} delay?
+ * @returns string
+ */
 function resultsTableString(
   table: Map<string, string>,
   qos?: mqtt.QoS,
   delay?: publishDelay,
-) {
+): string {
   let result = "";
+  // determine the horizontal size of each cell
   const maxDigits = Array.from(table.values()).reduce((prev, curr) => {
     const currLength = curr.length;
     prev = currLength > prev ? currLength : prev;
     return prev;
   }, 1);
 
-  // eslint-disable-next-line sonarjs/cognitive-complexity
   metrics.forEach((m) => {
-    // eslint-disable-next-line sonarjs/no-nested-template-literals
+    // print delay values header
     result += `${chalk.yellow(`${m}:`)}\nDelay ${chalk.gray("│")}`;
     delayValues.forEach((d) => {
       result += " ";
@@ -61,14 +76,15 @@ function resultsTableString(
           : chalk.gray("──┼");
     });
     result += "\n";
+    // print table values
     [0, 1, 2].forEach((q) => {
       result += `QoS ${q} ${chalk.gray("│")} `;
       delayValues.forEach((d) => {
-        // TODO check undefined
         const val = table.get(`${m}/${q}/${d}`) || 0;
         for (let x = 0; x < maxDigits - String(val).length; x++) {
           result += " ";
         }
+        // highlight the current value
         if (!(qos === undefined || delay === undefined)) {
           result += q == qos && d == delay ? chalk.yellow(val) : val;
         } else {
@@ -83,6 +99,17 @@ function resultsTableString(
   return result;
 }
 
+/**
+ * Calculate metrics for a specific qos/delay value
+ *
+ * @param  {Map<string, string>} table
+ * @param  {mqtt.QoS} qos
+ * @param  {publishDelay} delay
+ * @param  {number} receivedMessages
+ * @param  {number} receivedMessagesOutOfOrder
+ * @param  {number} maxCount
+ * @param  {number[]} delayBetweenMessages
+ */
 function calculateResults(
   table: Map<string, string>,
   qos: mqtt.QoS,
@@ -116,15 +143,18 @@ function calculateResults(
       return a - b;
     });
     const middle = Math.floor(values.length / 2);
-
     if (values.length % 2) return values[middle] || 0;
     return ((values[middle - 1] || 0) + (values[middle] || 0)) / 2.0;
   }
-
   table.set(
     `${metrics[4]}/${qos}/${delay}`,
     median(delayBetweenMessages).toFixed(),
   );
 }
 
-export { createResultsTable, resultsTableString, calculateResults };
+export {
+  createResultsTable,
+  resultsTableString,
+  calculateResults,
+  resultsTable,
+};

@@ -1,3 +1,4 @@
+// enum for delay
 const delayValues = [0, 1, 2, 10, 20, 100, 200] as const;
 type publishDelay = typeof delayValues[number];
 

@@ -1,23 +1,33 @@
-import * as mqtt from "mqtt";
-import "dotenv/config";
 import chalk from "chalk";
+import "dotenv/config";
+import * as mqtt from "mqtt";
 import { createSpinner } from "nanospinner";
 
+/**
+ * Start a client and handle various connection states
+ *
+ * @param  {string} host
+ * @param  {string} port
+ * @param  {string} username
+ * @param  {string} password
+ * @param  {string} clientId
+ * @param  {()=>void} onConnect
+ */
 async function mqttStartClient(
   host: string,
   port: string,
   username: string,
   password: string,
   clientId: string,
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  onConnect: Function,
+  onConnect: () => void,
 ) {
   let isConnected = false;
+
   const spinner = createSpinner(
-    // eslint-disable-next-line sonarjs/no-nested-template-literals
     chalk.blue(`Connecting to ${chalk.yellow(`mqtt://${host}:${port}`)}`),
   ).start();
 
+  // connect to host:port with provided username and password
   const client: mqtt.MqttClient = mqtt.connect(`mqtt://${host}:${port}`, {
     username: username,
     password: password,
@@ -25,6 +35,7 @@ async function mqttStartClient(
     clientId: clientId,
   });
 
+  // run callback once connected
   client.on("connect", () => {
     isConnected = true;
     spinner.success({
@@ -36,6 +47,7 @@ async function mqttStartClient(
     });
     onConnect();
   });
+  // handle various client states
   client.on("error", (error) => {
     spinner.error({
       text: chalk.red(error),
@@ -64,6 +76,12 @@ async function mqttStartClient(
   return client;
 }
 
+/**
+ * Basic error handling for topic subscriptions
+ *
+ * @param  {mqtt.MqttClient} client
+ * @param  {string} topic
+ */
 function subscripeToTopic(client: mqtt.MqttClient, topic: string) {
   client.subscribe(topic, function (err) {
     if (err) {

@@ -1,9 +1,6 @@
 #!/usr/bin/env node
-/* eslint-disable sonarjs/no-duplicate-string */
-
 import chalk from "chalk";
 import * as mqtt from "mqtt";
-import { createSpinner } from "nanospinner";
 import { args, askMeasurements, askPassword, askUsername } from "./cliUtils";
 import { nextDelay, publishDelay } from "./delay";
 import { mqttStartClient, subscripeToTopic } from "./mqttUtils";
@@ -11,22 +8,28 @@ import {
   calculateResults,
   createResultsTable,
   resultsTableString,
+  resultsTable,
 } from "./resultsTable";
 
-const host = args["host"] || process.env["MQTT_HOST"] || "localhost";
-const port = args["port"] || process.env["MQTT_PORT"] || "1883";
-const username =
+// initialize parameters from command line arguments or env vars
+// defaults to localhost:1883 with no username or password
+const HOST = args["host"] || process.env["MQTT_HOST"] || "localhost";
+const PORT = args["port"] || process.env["MQTT_PORT"] || "1883";
+const USERNAME =
   args["username"] || process.env["MQTT_USERNAME"] || (await askUsername());
-const password =
+const PASSWORD =
   args["password"] || process.env["MQTT_PASSWORD"] || (await askPassword());
 const DURATION_PER_MEASUREMENT = (args["durationPerMeasurement"] ||
   process.env["DURATION_PER_MEASUREMENT"] ||
   (await askMeasurements())) as number;
-const displayLiveResults = args["live"] || false;
 
+// current values the analyser is taking measurements on
 let qos: mqtt.QoS = 0; // 0, 1 or 2
 let delay: publishDelay = 0; // ms
+// analyse each pair of values for a specified amount of time
 let startTime = 0;
+let hasTimerStarted = false;
+//
 let measurementsTaken = 0;
 let receivedMessages = 0;
 let receivedMessagesOutOfOrder = 0;
@@ -34,51 +37,27 @@ let prevCount = -1;
 let maxCount = -1;
 let lastMeasurementTime: number | undefined = undefined;
 let delayBetweenMessages: number[] = [];
-let hasTimerStarted = false;
-let analyserStatusMessage = "";
-
-interface resultsTable {
-  table: Map<string, string>;
-  currentTableStr: string;
-}
-
+let hasSentWaitingMessage = false;
 const resultsTable: resultsTable = createResultsTable();
 
-const spinner = createSpinner(
-  chalk.visible(
-    `Waiting for messages on topic ${chalk.yellow(
-      `counter/${qos}/${delay}`,
-    )}...`,
-  ),
-);
-
+// initialize the mqtt client with provided arguments
 const client: mqtt.MqttClient = await mqttStartClient(
-  host,
-  port,
-  username,
-  password,
+  HOST,
+  PORT,
+  USERNAME,
+  PASSWORD,
   "Analyser",
-  () => {
-    takeMeasurements();
-    if (displayLiveResults) spinner.start();
-    else
-      console.log(
-        chalk.visible(
-          `Waiting for messages on topic ${chalk.yellow(
-            `counter/${qos}/${delay}`,
-          )}...`,
-        ),
-      );
-  },
+  () => takeMeasurements(),
 );
 
+// the analyser subscribes to count/<qos>/<delay> and publishes to request/qos
+// and request/delay
 subscripeToTopic(client, "counter/#");
-
 client.publish("request/qos", qos.toString(), { retain: true });
 client.publish("request/delay", delay.toString(), { retain: true });
 
+// respond to message from publisher and update metrics
 client.on("message", (topic, message) => {
-  // TODO validate topic
   if (topic === `counter/${qos}/${delay}`) {
     receivedMessages++;
     if (parseInt(message.toString()) !== prevCount + 1)
@@ -92,7 +71,7 @@ client.on("message", (topic, message) => {
 });
 
 async function takeMeasurements() {
-  // eslint-disable-next-line sonarjs/cognitive-complexity
+  // poll metrics for each pair of qos/delay values until timer has run out
   const interval = setInterval(function () {
     if (measurementsTaken < 21) {
       if (receivedMessages > 0 && !hasTimerStarted) {
@@ -103,13 +82,15 @@ async function takeMeasurements() {
           chalk.visible(
             `Receiving messages on topic ${chalk.yellow(
               `counter/${qos}/${delay}`,
-            )}`,
+            )} for ${chalk.yellow(`${DURATION_PER_MEASUREMENT}ms`)}`,
           ),
         );
       } else if (
         new Date().getTime() - startTime > DURATION_PER_MEASUREMENT &&
         hasTimerStarted
       ) {
+        // calculate and display a set of metrics for a given qos/delay value
+        // once timer has expired
         hasTimerStarted = false;
         measurementsTaken++;
         calculateResults(
@@ -121,94 +102,56 @@ async function takeMeasurements() {
           maxCount,
           delayBetweenMessages,
         );
+        // increment to the next qos/delay value
         if (delay < 200) {
           delay = nextDelay(delay) || 200;
-          client.publish("request/qos", qos.toString(), { retain: true });
-          client.publish("request/delay", delay.toString(), { retain: true });
-          console.log(
-            chalk.visible(
-              `Waiting for messages on topic ${chalk.yellow(
-                `counter/${qos}/${delay}`,
-              )}`,
-            ),
-          );
         } else if (qos < 2) {
           qos++;
           delay = 0;
-          client.publish("request/qos", qos.toString(), { retain: true });
-          client.publish("request/delay", delay.toString(), { retain: true });
-          console.log(
-            chalk.visible(
-              `Waiting for messages on topic ${chalk.yellow(
-                `counter/${qos}/${delay}`,
-              )}`,
-            ),
-          );
         }
+        // publish the new qos/delay value
+        client.publish("request/qos", qos.toString(), { retain: true });
+        client.publish("request/delay", delay.toString(), { retain: true });
         resultsTable.currentTableStr = resultsTableString(
           resultsTable.table,
           qos,
           delay,
         );
-        // TODO print intermediate results
-        if (!displayLiveResults) {
-          console.log(
-            `Finished receiving messages on topic ${chalk.yellow(
-              `counter/${qos}/${delay}`,
-            )}\n${resultsTable.currentTableStr}`,
-          );
-        }
+        console.log(
+          `Finished receiving messages on topic ${chalk.yellow(
+            `counter/${qos}/${delay}`,
+          )}\n${resultsTable.currentTableStr}`,
+        );
+        // reset metrics for the next measurement
+        hasSentWaitingMessage = false;
         receivedMessages = 0;
         receivedMessagesOutOfOrder = 0;
         prevCount = -1;
         maxCount = -1;
         lastMeasurementTime = undefined;
         delayBetweenMessages = [];
-      }
-      // update spinner
-      let currentTime = new Date().getTime();
-      if (hasTimerStarted) {
-        analyserStatusMessage = "";
-      } else {
-        analyserStatusMessage = `  Waiting for messages on topic ${chalk.yellow(
-          `counter/${qos}/${delay}`,
-        )}`;
-        currentTime = startTime;
-      }
-      if (displayLiveResults) {
-        spinner.update({
-          text: chalk.visible(
-            `Analysing QoS ${chalk.yellow(qos)} with a delay of ${chalk.yellow(
-              delay,
-            )} - Progress: ${chalk.yellow(
-              `${(
-                ((currentTime - startTime) / DURATION_PER_MEASUREMENT) *
-                100
-              ).toFixed()}%`,
-            )} - Measurements: ${chalk.yellow(
-              `${measurementsTaken} / 21`,
-            )}\n${analyserStatusMessage}\n${resultsTable.currentTableStr}`,
-          ),
-        });
-      }
-    } else {
-      clearInterval(interval);
-      resultsTable.currentTableStr = resultsTableString(resultsTable.table);
-      if (displayLiveResults) {
-        spinner.success({
-          text: `${chalk.green("Finished analysing\n\n")}${chalk.visible(
-            resultsTable.currentTableStr,
-          )}`,
-        });
-      } else {
+      } else if (receivedMessages === 0 && !hasSentWaitingMessage) {
+        // notify if waiting to get messages from the subscriber
+        hasSentWaitingMessage = true;
         console.log(
           chalk.visible(
-            `${chalk.green("Finished analysing\n\n")}${chalk.visible(
-              resultsTable.currentTableStr,
+            `Waiting for messages on topic ${chalk.yellow(
+              `counter/${qos}/${delay}`,
             )}`,
           ),
         );
       }
+    } else {
+      // once all measurements have been collected, terminate the process
+      clearInterval(interval);
+      resultsTable.currentTableStr = resultsTableString(resultsTable.table);
+      console.log(
+        chalk.visible(
+          `${chalk.green("Finished analysing\n\n")}${chalk.visible(
+            resultsTable.currentTableStr,
+          )}`,
+        ),
+      );
       process.exit(0);
     }
   }, 0);
