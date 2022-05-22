@@ -101,6 +101,7 @@ async function takeMeasurements() {
           receivedMessagesOutOfOrder,
           maxCount,
           delayBetweenMessages,
+          DURATION_PER_MEASUREMENT,
         );
         // increment to the next qos/delay value
         if (delay < 200) {

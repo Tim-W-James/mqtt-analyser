@@ -118,23 +118,27 @@ function calculateResults(
   receivedMessagesOutOfOrder: number,
   maxCount: number,
   delayBetweenMessages: number[],
+  durationPerMeasurement: number,
 ) {
   // rate
-  table.set(`${metrics[0]}/${qos}/${delay}`, receivedMessages.toString());
+  table.set(
+    `${metrics[0]}/${qos}/${delay}`,
+    (receivedMessages / (durationPerMeasurement / 1000)).toFixed(2),
+  );
   // loss
   table.set(
     `${metrics[1]}/${qos}/${delay}`,
-    ((maxCount / (receivedMessages - 1)) * 100 - 100).toFixed(),
+    ((maxCount / (receivedMessages - 1)) * 100 - 100).toFixed(2),
   );
   // out-of-order
   table.set(
     `${metrics[2]}/${qos}/${delay}`,
-    ((receivedMessagesOutOfOrder / receivedMessages) * 100).toFixed(),
+    ((receivedMessagesOutOfOrder / receivedMessages) * 100).toFixed(2),
   );
   // mean gap
   table.set(
     `${metrics[3]}/${qos}/${delay}`,
-    mean(delayBetweenMessages).toFixed(),
+    mean(delayBetweenMessages).toFixed(2),
   );
   // median gap
   function median(values: number[]): number {
@@ -148,7 +152,7 @@ function calculateResults(
   }
   table.set(
     `${metrics[4]}/${qos}/${delay}`,
-    median(delayBetweenMessages).toFixed(),
+    median(delayBetweenMessages).toFixed(2),
   );
 }
 
